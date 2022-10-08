@@ -1,0 +1,18 @@
+[package]
+name = "buscaluso-bench"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+nom = "7.1"
+unicode-normalization = "0.1.21"
+rand = "0.8"
+buscaluso = { path = "../buscaluso" }
+shadow-rs = "0.16"
+
+[build-dependencies]
+shadow-rs = "0.16"
