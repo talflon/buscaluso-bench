@@ -1,3 +1,6 @@
+// Copyright © 2022 Daniel Getz
+// SPDX-License-Identifier: MIT
+
 mod benchfile;
 
 #[cfg(test)]

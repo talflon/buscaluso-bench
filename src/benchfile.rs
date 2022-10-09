@@ -1,3 +1,6 @@
+// Copyright © 2022 Daniel Getz
+// SPDX-License-Identifier: MIT
+
 use nom::bytes::complete::take_while1;
 use nom::character::complete::{char, space0};
 use nom::combinator::{eof, opt};
