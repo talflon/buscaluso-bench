@@ -13,7 +13,10 @@ fn test_runcfg_deserialize() {
         Ok(BenchRunCfg {
             repeat: 7,
             timeout: Duration::from_secs_f64(8.3),
-            verbose: 1
+            verbose: 1,
+            rules_file: None,
+            dict_file: None,
+            bench_file: None,
         })
     );
 }
@@ -36,6 +39,9 @@ fn test_runcfg_serialize_deserialize() -> Result<(), toml::ser::Error> {
         repeat: 20,
         verbose: 5,
         timeout: Duration::from_secs_f64(2.5),
+        rules_file: None,
+        dict_file: None,
+        bench_file: None,
     };
     assert_eq!(toml::from_str(&toml::to_string(&cfg)?), Ok(cfg));
     Ok(())

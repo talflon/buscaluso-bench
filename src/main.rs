@@ -2,12 +2,11 @@ use std::io::prelude::*;
 
 use std::fs;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use buscaluso::*;
 use buscaluso_bench::*;
@@ -23,19 +22,41 @@ struct Cli {
 
     /// Rules file
     #[arg(short, long)]
-    rules: PathBuf,
+    rules: Option<PathBuf>,
 
     /// Dictionary file
     #[arg(short, long)]
-    dict: PathBuf,
+    dict: Option<PathBuf>,
 
     /// Benchmark file
     #[arg(short, long)]
-    bench: PathBuf,
+    bench: Option<PathBuf>,
 
     /// Turn on verbose output
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+}
+
+fn copy_required_setting_from_cli<T: Clone>(
+    cfg_setting: &mut Option<T>,
+    cli_setting: &Option<T>,
+    error_msg: &str,
+) {
+    if cli_setting.is_some() {
+        *cfg_setting = cli_setting.clone();
+    } else if cfg_setting.is_none() {
+        Cli::command()
+            .error(clap::error::ErrorKind::MissingRequiredArgument, error_msg)
+            .exit();
+    }
+}
+
+fn setting_file_reader(setting: &Option<PathBuf>, verbose: u8) -> impl BufRead {
+    let path = setting.as_ref().unwrap();
+    if verbose > 0 {
+        eprintln!("Loading {:?}", path);
+    }
+    BufReader::new(File::open(path).unwrap())
 }
 
 fn main() {
@@ -47,33 +68,21 @@ fn main() {
     if cli.verbose != 0 {
         run_cfg.verbose = cli.verbose;
     }
+    copy_required_setting_from_cli(&mut run_cfg.rules_file, &cli.rules, "Missing rules file");
+    copy_required_setting_from_cli(&mut run_cfg.dict_file, &cli.dict, "Missing dict file");
+    copy_required_setting_from_cli(&mut run_cfg.bench_file, &cli.bench, "Missing benches file");
     let mut bencher = Bencher::new();
 
-    if run_cfg.verbose > 0 {
-        eprint!("Loading rules from {:?}...", cli.rules);
-        io::stderr().flush().unwrap();
-    }
     search_cfg
-        .load_rules(BufReader::new(File::open(cli.rules).unwrap()))
+        .load_rules(setting_file_reader(&run_cfg.rules_file, run_cfg.verbose))
         .unwrap();
-    if run_cfg.verbose > 0 {
-        eprintln!("done");
-        eprint!("Loading dictionary from {:?}...", cli.dict);
-        io::stderr().flush().unwrap();
-    }
     search_cfg
-        .load_dictionary(BufReader::new(File::open(cli.dict).unwrap()))
+        .load_dictionary(setting_file_reader(&run_cfg.dict_file, run_cfg.verbose))
         .unwrap();
-    if run_cfg.verbose > 0 {
-        eprintln!("done");
-        eprint!("Loading benchmarks from {:?}...", cli.bench);
-        io::stderr().flush().unwrap();
-    }
     bencher
-        .load_benches(BufReader::new(File::open(cli.bench).unwrap()))
+        .load_benches(setting_file_reader(&run_cfg.bench_file, run_cfg.verbose))
         .unwrap();
     if run_cfg.verbose > 0 {
-        eprintln!("done");
         eprintln!(
             "Running all benchmarks {} times with a timeout of {:?} each",
             run_cfg.repeat, run_cfg.timeout,

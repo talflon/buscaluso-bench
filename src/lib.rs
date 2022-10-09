@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::io::BufRead;
+use std::path::PathBuf;
 use std::result::Result;
 use std::time::{Duration, Instant};
 
@@ -70,7 +71,7 @@ where
     Ok(Duration::from_secs_f64(seconds))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BenchRunCfg {
     pub repeat: u8,
 
@@ -82,6 +83,10 @@ pub struct BenchRunCfg {
 
     #[serde(default)]
     pub verbose: u8,
+
+    pub rules_file: Option<PathBuf>,
+    pub dict_file: Option<PathBuf>,
+    pub bench_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
