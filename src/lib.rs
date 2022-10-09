@@ -35,6 +35,13 @@ impl Ord for BenchResult {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BenchRunCfg {
+    pub repeat: u8,
+    pub timeout: Duration,
+    pub verbose: u8,
+}
+
 #[derive(Debug, Clone)]
 pub struct Bencher {
     benches: BTreeMap<String, BTreeMap<BTreeSet<String>, Vec<BenchResult>>>,
@@ -84,30 +91,30 @@ impl Bencher {
         }
     }
 
-    pub fn run_benches(&mut self, cfg: &BuscaCfg, times: u32, timeout: Duration, verbose: u8) {
+    pub fn run_benches(&mut self, search_cfg: &BuscaCfg, run_cfg: &BenchRunCfg) {
         let mut rng = thread_rng();
         let mut start_words: Vec<String> = self.benches.keys().cloned().collect();
-        let num_to_do = start_words.len() as u32 * times;
+        let num_to_do = start_words.len() as u32 * (run_cfg.repeat as u32);
         let mut num_complete: u32 = 0;
 
-        if verbose > 1 {
+        if run_cfg.verbose > 1 {
             eprintln!("warmup run");
         }
         start_words.shuffle(&mut rng);
         for word in &start_words {
-            self.run_benches_for_word(cfg, word, timeout);
+            self.run_benches_for_word(search_cfg, word, run_cfg.timeout);
         }
         self.clear_results();
 
-        if verbose > 1 {
+        if run_cfg.verbose > 1 {
             eprintln!("(0/{})", num_to_do);
         }
-        for _ in 0..times {
+        for _ in 0..run_cfg.repeat {
             start_words.shuffle(&mut rng);
             for word in &start_words {
-                self.run_benches_for_word(cfg, word, timeout);
+                self.run_benches_for_word(search_cfg, word, run_cfg.timeout);
                 num_complete += 1;
-                if verbose > 1 {
+                if run_cfg.verbose > 1 {
                     eprintln!("({}/{})", num_complete, num_to_do);
                 }
             }

@@ -33,7 +33,7 @@ struct Cli {
     verbose: u8,
 }
 
-const REPEAT_BENCHES: u32 = 3;
+const REPEAT_BENCHES: u8 = 3;
 const BENCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn main() -> Result<()> {
@@ -66,7 +66,14 @@ fn main() -> Result<()> {
             REPEAT_BENCHES, BENCH_TIMEOUT,
         );
     }
-    bencher.run_benches(&cfg, REPEAT_BENCHES, BENCH_TIMEOUT, cli.verbose);
+    bencher.run_benches(
+        &cfg,
+        &BenchRunCfg {
+            repeat: REPEAT_BENCHES,
+            timeout: BENCH_TIMEOUT,
+            verbose: cli.verbose,
+        },
+    );
     if cli.verbose > 0 {
         let elapsed = start_time.elapsed();
         eprintln!("Total elapsed time: {:?}", elapsed);
