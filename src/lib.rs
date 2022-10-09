@@ -1,7 +1,11 @@
 mod benchfile;
 
+#[cfg(test)]
+mod tests;
+
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io;
 use std::io::BufRead;
 use std::result::Result;
 use std::time::{Duration, Instant};
@@ -9,8 +13,24 @@ use std::time::{Duration, Instant};
 use nom::Finish;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use thiserror::Error;
 
-use buscaluso::{BuscaCfg, FonError::ParseErr};
+use buscaluso::BuscaCfg;
+
+#[derive(Error, Debug)]
+pub enum BenchError {
+    #[error("IO error {source:?}")]
+    Io {
+        #[from]
+        source: io::Error,
+    },
+
+    #[error("Parsing error on line {line_no}: {text:?}")]
+    ParseErr { line_no: usize, text: String },
+}
+
+use BenchError::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BenchResult {
@@ -35,10 +55,32 @@ impl Ord for BenchResult {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+fn duration_serialize_seconds<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_f64(duration.as_secs_f64())
+}
+
+fn duration_deserialize_seconds<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let seconds: f64 = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::from_secs_f64(seconds))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BenchRunCfg {
     pub repeat: u8,
+
+    #[serde(
+        serialize_with = "duration_serialize_seconds",
+        deserialize_with = "duration_deserialize_seconds"
+    )]
     pub timeout: Duration,
+
+    #[serde(default)]
     pub verbose: u8,
 }
 
@@ -64,7 +106,7 @@ impl Bencher {
             .or_default();
     }
 
-    pub fn load_benches<R: BufRead>(&mut self, input: R) -> buscaluso::Result<()> {
+    pub fn load_benches<R: BufRead>(&mut self, input: R) -> Result<(), BenchError> {
         for (line_no, line) in input.lines().enumerate() {
             match benchfile::bench_line(&line?).finish() {
                 Ok((_, Some((start_words, target_list)))) => {
