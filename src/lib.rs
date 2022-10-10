@@ -42,6 +42,12 @@ pub struct BenchResult {
     elapsed: Duration,
 }
 
+impl BenchResult {
+    fn is_found(&self) -> bool {
+        matches!(self.found_index, Ok(Some(_)))
+    }
+}
+
 impl PartialOrd for BenchResult {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -77,6 +83,7 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BenchRunCfg {
     pub repeat: u8,
+    pub repeat_failed: u8,
 
     #[serde(
         serialize_with = "duration_serialize_seconds",
@@ -141,6 +148,21 @@ impl Bencher {
         }
     }
 
+    pub fn clear_successes(&mut self) {
+        for bench_map in self.benches.values_mut() {
+            for bench_vec in bench_map.values_mut() {
+                let mut i = 0;
+                while i < bench_vec.len() {
+                    if bench_vec[i].is_found() {
+                        bench_vec.remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn run_benches(&mut self, search_cfg: &BuscaCfg, run_cfg: &BenchRunCfg) {
         let mut rng = thread_rng();
         let mut start_words: Vec<String> = self.benches.keys().cloned().collect();
@@ -152,9 +174,9 @@ impl Bencher {
         }
         start_words.shuffle(&mut rng);
         for word in &start_words {
-            self.run_benches_for_word(search_cfg, word, run_cfg.timeout);
+            self.run_benches_for_word(search_cfg, run_cfg, word);
         }
-        self.clear_results();
+        self.clear_successes();
 
         if run_cfg.verbose > 1 {
             eprintln!("(0/{})", num_to_do);
@@ -162,7 +184,7 @@ impl Bencher {
         for _ in 0..run_cfg.repeat {
             start_words.shuffle(&mut rng);
             for word in &start_words {
-                self.run_benches_for_word(search_cfg, word, run_cfg.timeout);
+                self.run_benches_for_word(search_cfg, run_cfg, word);
                 num_complete += 1;
                 if run_cfg.verbose > 1 {
                     eprintln!("({}/{})", num_complete, num_to_do);
@@ -171,62 +193,64 @@ impl Bencher {
         }
     }
 
-    fn run_benches_for_word(&mut self, cfg: &BuscaCfg, start_word: &str, timeout: Duration) {
+    fn run_benches_for_word(&mut self, cfg: &BuscaCfg, run_cfg: &BenchRunCfg, start_word: &str) {
         let benches = self.benches.get_mut(start_word).unwrap();
-        let mut remaining_targets: Vec<BTreeSet<String>> = benches.keys().cloned().collect();
-        let all_target_words: BTreeSet<String> = benches
-            .keys()
-            .flat_map(|targets| targets.iter().cloned())
-            .collect();
+        let mut runner = BenchRunner::new();
+        for (targets, results) in benches.iter() {
+            if results.len() < run_cfg.repeat_failed as usize
+                || results.iter().any(BenchResult::is_found)
+            {
+                runner.add_targets(targets);
+            }
+        }
+        if runner.is_done() {
+            if run_cfg.verbose > 1 {
+                eprintln!("Skipping {}", start_word);
+            }
+            return;
+        }
+
         let start_time = Instant::now();
         match cfg.search(start_word) {
             Ok(mut iter) => {
                 let mut iter = iter.iter();
                 let mut word_idx = 0;
-                while !remaining_targets.is_empty() {
+                while !runner.is_done() {
                     match iter.next() {
                         Some(Some((word, _))) => {
-                            if all_target_words.contains(word) {
-                                let result = BenchResult {
-                                    elapsed: start_time.elapsed(),
+                            let elapsed = start_time.elapsed();
+                            runner.on_word_found(word, |target| {
+                                benches.get_mut(target).unwrap().push(BenchResult {
+                                    elapsed,
                                     found_index: Ok(Some(word_idx)),
-                                };
-                                let mut target_idx = 0;
-                                while target_idx < remaining_targets.len() {
-                                    if remaining_targets[target_idx].contains(word) {
-                                        let target = remaining_targets.swap_remove(target_idx);
-                                        benches.get_mut(&target).unwrap().push(result.clone())
-                                    }
-                                    target_idx += 1;
-                                }
-                            }
+                                })
+                            });
                             word_idx += 1;
                         }
                         Some(None) => {}
                         None => break,
                     }
 
-                    if start_time.elapsed() >= timeout {
+                    if start_time.elapsed() >= run_cfg.timeout {
                         break;
                     }
                 }
+
                 let elapsed = start_time.elapsed();
-                let result = BenchResult {
-                    elapsed,
-                    found_index: Ok(None),
-                };
-                for target in remaining_targets {
-                    benches.get_mut(&target).unwrap().push(result.clone());
+                for target in &runner.remaining_targets {
+                    benches.get_mut(target).unwrap().push(BenchResult {
+                        elapsed,
+                        found_index: Ok(None),
+                    });
                 }
             }
             Err(err) => {
                 let elapsed = start_time.elapsed();
-                let result = BenchResult {
-                    elapsed,
-                    found_index: Err(err.to_string()),
-                };
                 for result_vec in benches.values_mut() {
-                    result_vec.push(result.clone());
+                    result_vec.push(BenchResult {
+                        elapsed,
+                        found_index: Err(err.to_string()),
+                    });
                 }
             }
         }
@@ -254,5 +278,45 @@ fn compile_run_results(run_results: &[BenchResult]) -> BenchResult {
 impl Default for Bencher {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BenchRunner {
+    remaining_targets: Vec<BTreeSet<String>>,
+    all_target_words: BTreeSet<String>,
+}
+
+impl BenchRunner {
+    fn new() -> Self {
+        BenchRunner {
+            remaining_targets: Vec::new(),
+            all_target_words: BTreeSet::new(),
+        }
+    }
+
+    fn add_targets(&mut self, targets: &BTreeSet<String>) {
+        self.remaining_targets.push(targets.clone());
+        for word in targets {
+            self.all_target_words.insert(word.clone());
+        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.remaining_targets.is_empty()
+    }
+
+    fn on_word_found(&mut self, word: &str, mut on_target_hit: impl FnMut(&BTreeSet<String>)) {
+        if self.all_target_words.contains(word) {
+            let mut target_idx = 0;
+            while target_idx < self.remaining_targets.len() {
+                if self.remaining_targets[target_idx].contains(word) {
+                    let target = self.remaining_targets.swap_remove(target_idx);
+                    on_target_hit(&target);
+                } else {
+                    target_idx += 1;
+                }
+            }
+        }
     }
 }
