@@ -19,6 +19,8 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
+use unicode_normalization::char::is_combining_mark;
+use unicode_normalization::UnicodeNormalization;
 
 use buscaluso::BuscaCfg;
 
@@ -122,12 +124,17 @@ impl Bencher {
     }
 
     pub fn load_benches<R: BufRead>(&mut self, input: R) -> Result<(), BenchError> {
+        let mut unaccented = String::new();
         for (line_no, line) in input.lines().enumerate() {
             match benchfile::bench_line(&line?).finish() {
                 Ok((_, Some((start_words, target_list)))) => {
                     for start_word in start_words {
+                        set_unaccented(start_word, &mut unaccented);
                         for targets in &target_list {
                             self.add_bench(start_word, targets);
+                            if unaccented != start_word {
+                                self.add_bench(&unaccented, targets);
+                            }
                         }
                     }
                     Ok(())
@@ -319,4 +326,9 @@ impl BenchRunner {
             }
         }
     }
+}
+
+fn set_unaccented(accented: &str, unaccented: &mut String) {
+    unaccented.clear();
+    unaccented.extend(accented.nfd().filter(|&c| !is_combining_mark(c)));
 }

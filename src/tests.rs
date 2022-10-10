@@ -156,3 +156,18 @@ fn test_bench_runner_on_word_found() {
     runner.on_word_found("word", |_| {});
     assert!(runner.is_done());
 }
+
+#[test]
+fn test_set_unaccented_already_unaccented() {
+    let mut unaccented = String::new();
+    let word = "simple";
+    set_unaccented(word, &mut unaccented);
+    assert_eq!(unaccented, word);
+}
+
+#[test]
+fn test_set_unaccented() {
+    let mut unaccented = String::new();
+    set_unaccented("âéïõù", &mut unaccented);
+    assert_eq!(unaccented, "aeiou");
+}

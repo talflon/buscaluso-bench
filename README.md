@@ -59,3 +59,13 @@ Corresponds to four benchmarks to be run:
 2. Same thing, but search starting from `search_word2`.
 3. Search starting from `search_word1`, looking for `target_word2`.
 4. Search starting from `search_word2`, looking for `target_word2`.
+
+If any search words have accented letters, the benchmark is added for both the verbatim, accented search word,
+and also for a second version of the word with all accent marks removed. There's no need to write both:
+
+```
+óne = ano
+one = ano
+```
+
+because the first one suffices to define both benchmarks.
