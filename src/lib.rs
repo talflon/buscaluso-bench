@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 mod benchfile;
+mod sqlite;
 
 #[cfg(test)]
 mod tests;

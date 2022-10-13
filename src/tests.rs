@@ -8,8 +8,9 @@ use quickcheck_macros::*;
 
 impl Arbitrary for BenchResult {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let found_index: Result<Option<u16>, String> = Result::arbitrary(g);
         BenchResult {
-            found_index: Result::arbitrary(g),
+            found_index: found_index.map(|opt| opt.map(|n16| n16 as usize)),
             elapsed: Duration::arbitrary(g),
         }
     }
