@@ -35,6 +35,7 @@ fn test_runcfg_deserialize() {
             rules_file: None,
             dict_file: None,
             bench_file: None,
+            out_db: default_out_db(),
         })
     );
 }
@@ -62,6 +63,7 @@ fn test_runcfg_serialize_deserialize() -> Result<(), toml::ser::Error> {
         rules_file: None,
         dict_file: None,
         bench_file: None,
+        out_db: default_out_db(),
     };
     assert_eq!(toml::from_str(&toml::to_string(&cfg)?), Ok(cfg));
     Ok(())
@@ -171,4 +173,32 @@ fn test_set_unaccented() {
     let mut unaccented = String::new();
     set_unaccented("âéïõù", &mut unaccented);
     assert_eq!(unaccented, "aeiou");
+}
+
+#[test]
+fn test_set_bench_name() {
+    let mut bench_name = String::new();
+    set_bench_name(&mut bench_name, "word", &BTreeSet::from(["target"]));
+    assert_eq!(bench_name, "word = target");
+    set_bench_name(&mut bench_name, "x", &BTreeSet::from(["a", "b"]));
+    assert_eq!(bench_name, "x = a | b");
+    set_bench_name(&mut bench_name, "y", &BTreeSet::from(["a", "b", "c"]));
+    assert_eq!(bench_name, "y = a | b | c");
+}
+
+#[test]
+fn test_set_bench_name_canonical_order() {
+    let mut bench_name1 = String::new();
+    let mut bench_name2 = String::new();
+    set_bench_name(
+        &mut bench_name1,
+        "does",
+        &BTreeSet::from_iter(["this", "work"].iter()),
+    );
+    set_bench_name(
+        &mut bench_name2,
+        "does",
+        &BTreeSet::from_iter(["work", "this"].iter()),
+    );
+    assert_eq!(bench_name1, bench_name2);
 }

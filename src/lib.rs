@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 mod benchfile;
-mod sqlite;
+pub mod sqlite;
 
 #[cfg(test)]
 mod tests;
@@ -100,6 +100,13 @@ pub struct BenchRunCfg {
     pub rules_file: Option<PathBuf>,
     pub dict_file: Option<PathBuf>,
     pub bench_file: Option<PathBuf>,
+
+    #[serde(default = "default_out_db")]
+    pub out_db: PathBuf,
+}
+
+fn default_out_db() -> PathBuf {
+    "bench.sqlite3".into()
 }
 
 #[derive(Debug, Clone)]
@@ -264,23 +271,19 @@ impl Bencher {
         }
     }
 
-    pub fn compile_results(&self) -> Vec<(String, BenchResult)> {
+    pub fn get_results(&self) -> Vec<(String, BenchResult)> {
         let mut results = Vec::new();
+        let mut bench_name = String::new();
         for (start_word, benches) in &self.benches {
             for (targets, run_results) in benches {
-                let mut bench_name = start_word.clone();
-                bench_name.push_str(" = ");
-                let targets: Vec<&str> = targets.iter().map(String::as_ref).collect();
-                bench_name.push_str(&targets.join(" | "));
-                results.push((bench_name, compile_run_results(run_results)));
+                set_bench_name(&mut bench_name, start_word, targets);
+                for result in run_results {
+                    results.push((bench_name.clone(), result.clone()));
+                }
             }
         }
         results
     }
-}
-
-fn compile_run_results(run_results: &[BenchResult]) -> BenchResult {
-    run_results.iter().min().unwrap().clone()
 }
 
 impl Default for Bencher {
@@ -326,6 +329,18 @@ impl BenchRunner {
                 }
             }
         }
+    }
+}
+
+fn set_bench_name<S: AsRef<str>>(bench_name: &mut String, start_word: &str, targets: &BTreeSet<S>) {
+    bench_name.clear();
+    bench_name.push_str(start_word);
+    bench_name.push_str(" = ");
+    let mut target_iter = targets.iter();
+    bench_name.push_str(target_iter.next().unwrap().as_ref());
+    for target in target_iter {
+        bench_name.push_str(" | ");
+        bench_name.push_str(target.as_ref());
     }
 }
 

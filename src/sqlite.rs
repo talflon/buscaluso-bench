@@ -31,6 +31,9 @@ create table if not exists bench_run (
 
 create index if not exists bench_run_bench_idx
   on bench_run (bench, session_id);
+
+create index if not exists bench_run_session_idx
+  on bench_run (session_id);
 "#;
 
 pub struct BenchDb {
@@ -137,9 +140,11 @@ impl BenchDb {
                           and name = :name
                     "#,
                 )?
-                .execute(
-                    named_params! { ":session_id": session_id, ":name": name, ":value": value }
-                )?,
+                .execute(named_params! {
+                    ":session_id": session_id,
+                    ":name": name,
+                    ":value": value,
+                })?,
             1
         );
         Ok(())

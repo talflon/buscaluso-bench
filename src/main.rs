@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::{CommandFactory, Parser};
+use rusqlite::Connection;
 
+use crate::sqlite::BenchDb;
 use buscaluso::*;
 use buscaluso_bench::*;
 
@@ -34,6 +36,10 @@ struct Cli {
     /// Benchmark file
     #[arg(short, long)]
     bench: Option<PathBuf>,
+
+    /// Output database file, defaults to "bench.sqlite3"
+    #[arg(short, long)]
+    out_db: Option<PathBuf>,
 
     /// Turn on verbose output
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -74,6 +80,11 @@ fn main() {
     copy_required_setting_from_cli(&mut run_cfg.rules_file, &cli.rules, "Missing rules file");
     copy_required_setting_from_cli(&mut run_cfg.dict_file, &cli.dict, "Missing dict file");
     copy_required_setting_from_cli(&mut run_cfg.bench_file, &cli.bench, "Missing benches file");
+    if let Some(out_db) = cli.out_db {
+        run_cfg.out_db = out_db;
+    }
+
+    let mut db = BenchDb::new(Connection::open(&run_cfg.out_db).unwrap()).unwrap();
     let mut bencher = Bencher::new();
 
     search_cfg
@@ -85,19 +96,25 @@ fn main() {
     bencher
         .load_benches(setting_file_reader(&run_cfg.bench_file, run_cfg.verbose))
         .unwrap();
+
     if run_cfg.verbose > 0 {
         eprintln!(
             "Running all benchmarks {} times with a timeout of {:?} each",
             run_cfg.repeat, run_cfg.timeout,
         );
     }
+    let session_id = db.new_session_id().unwrap();
     bencher.run_benches(&search_cfg, &run_cfg);
+
+    if run_cfg.verbose > 0 {
+        eprintln!("Writing to database");
+    }
+    for (bench, result) in bencher.get_results() {
+        db.add_result(session_id, &bench, result).unwrap();
+    }
+
     if run_cfg.verbose > 0 {
         let elapsed = start_time.elapsed();
         eprintln!("Total elapsed time: {:?}", elapsed);
-    }
-
-    for (bench_name, result) in bencher.compile_results() {
-        println!("{} : {:?}", bench_name, result);
     }
 }
