@@ -13,24 +13,24 @@ use rusqlite::{named_params, Connection, ToSql};
 use super::BenchResult;
 
 const SCHEMA: &str = r#"
-create table if not exists bench_run_info (
-  start_time int not null,
+create table if not exists bench_session_info (
+  session_id int not null,
   name text not null,
   value text not null,
-  primary key (start_time, name));
+  primary key (session_id, name));
 
-create index if not exists bench_run_info_name_idx
-  on bench_run_info (name, value);
+create index if not exists bench_session_info_name_idx
+  on bench_session_info (name, value);
 
-create table if not exists bench_run_item (
-  start_time int not null,
+create table if not exists bench_run (
+  session_id int not null,
   bench text not null,
   duration real not null,
   found_at int,
   err text);
 
-create index if not exists bench_run_item_bench_idx
-  on bench_run_item (bench, start_time);
+create index if not exists bench_run_bench_idx
+  on bench_run (bench, session_id);
 "#;
 
 pub struct BenchDb {
@@ -43,28 +43,28 @@ impl BenchDb {
         Ok(BenchDb { conn })
     }
 
-    pub fn new_start(&mut self) -> rusqlite::Result<BenchRunStart> {
+    pub fn new_session_id(&mut self) -> rusqlite::Result<BenchSessionId> {
         let mut query = self.conn.prepare_cached(
             r#"
             select 1
-              from bench_run_info
-              where start_time = ?
+              from bench_session_info
+              where session_id = ?
               limit 1
             "#,
         )?;
-        let mut start_time = SystemTime::now()
+        let mut session_id = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        while query.exists([start_time])? {
-            start_time += 1;
+        while query.exists([session_id])? {
+            session_id += 1;
         }
-        Ok(BenchRunStart(start_time))
+        Ok(BenchSessionId(session_id))
     }
 
     pub fn add_result(
         &mut self,
-        start: BenchRunStart,
+        session_id: BenchSessionId,
         bench: &str,
         result: BenchResult,
     ) -> rusqlite::Result<()> {
@@ -75,30 +75,36 @@ impl BenchDb {
         self.conn
             .prepare_cached(
                 r#"
-                insert into bench_run_item
-                  (start_time, bench, duration, found_at, err)
+                insert into bench_run
+                  (session_id, bench, duration, found_at, err)
                   values(?, ?, ?, ?, ?)
                 "#,
             )?
-            .execute((start, bench, result.elapsed.as_secs_f64(), found_at, err))?;
+            .execute((
+                session_id,
+                bench,
+                result.elapsed.as_secs_f64(),
+                found_at,
+                err,
+            ))?;
         Ok(())
     }
 
     pub fn get_results(
         &mut self,
-        start: BenchRunStart,
+        session_id: BenchSessionId,
         bench: &str,
     ) -> rusqlite::Result<Vec<BenchResult>> {
         let mut results = Vec::new();
         let mut stmt = self.conn.prepare_cached(
             r#"
             select duration, found_at, err
-              from bench_run_item
-              where start_time = ?
+              from bench_run
+              where session_id = ?
                 and bench = ?
             "#,
         )?;
-        let mut rows = stmt.query((start, bench))?;
+        let mut rows = stmt.query((session_id, bench))?;
         while let Some(row) = rows.next()? {
             let err: Option<String> = row.get(2)?;
             results.push(BenchResult {
@@ -114,7 +120,7 @@ impl BenchDb {
 
     pub fn set_info(
         &mut self,
-        start: BenchRunStart,
+        session_id: BenchSessionId,
         name: &str,
         value: &str,
     ) -> rusqlite::Result<()> {
@@ -122,31 +128,36 @@ impl BenchDb {
             self.conn
                 .prepare_cached(
                     r#"
-                    insert into bench_run_info
-                      (start_time, name, value)
-                      values(:start, :name, :value)
+                    insert into bench_session_info
+                      (session_id, name, value)
+                      values(:session_id, :name, :value)
                       on conflict do update set
                         value = :value
-                        where start_time = :start
+                        where session_id = :session_id
                           and name = :name
                     "#,
                 )?
-                .execute(named_params! { ":start": start, ":name": name, ":value": value })?,
+                .execute(
+                    named_params! { ":session_id": session_id, ":name": name, ":value": value }
+                )?,
             1
         );
         Ok(())
     }
 
-    pub fn get_info(&mut self, start: BenchRunStart) -> rusqlite::Result<BTreeMap<String, String>> {
+    pub fn get_info(
+        &mut self,
+        session_id: BenchSessionId,
+    ) -> rusqlite::Result<BTreeMap<String, String>> {
         let mut map = BTreeMap::new();
         let mut stmt = self.conn.prepare_cached(
             r#"
             select name, value
-              from bench_run_info
-              where start_time = ?
+              from bench_session_info
+              where session_id = ?
             "#,
         )?;
-        let mut rows = stmt.query([start])?;
+        let mut rows = stmt.query([session_id])?;
         while let Some(row) = rows.next()? {
             map.insert(row.get(0)?, row.get(1)?);
         }
@@ -155,16 +166,22 @@ impl BenchDb {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BenchRunStart(u64);
+pub struct BenchSessionId(u64);
 
-impl ToSql for BenchRunStart {
+impl BenchSessionId {
+    pub fn start_time(&self) -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(self.0)
+    }
+}
+
+impl ToSql for BenchSessionId {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         self.0.to_sql()
     }
 }
 
-impl FromSql for BenchRunStart {
+impl FromSql for BenchSessionId {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        u64::column_result(value).map(BenchRunStart)
+        u64::column_result(value).map(BenchSessionId)
     }
 }
