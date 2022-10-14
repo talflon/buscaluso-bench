@@ -21,6 +21,10 @@ shadow_rs::shadow!(build);
 #[derive(Parser)]
 #[clap(author, version, long_version = build::CLAP_LONG_VERSION, about, long_about = None)]
 struct Cli {
+    /// Machine identifier
+    #[arg(short, long)]
+    machine: Option<String>,
+
     /// Config TOML file
     #[arg(short, long)]
     config: PathBuf,
@@ -77,6 +81,11 @@ fn main() {
     if cli.verbose != 0 {
         run_cfg.verbose = cli.verbose;
     }
+    copy_required_setting_from_cli(
+        &mut run_cfg.machine,
+        &cli.machine,
+        "Missing machine identifier",
+    );
     copy_required_setting_from_cli(&mut run_cfg.rules_file, &cli.rules, "Missing rules file");
     copy_required_setting_from_cli(&mut run_cfg.dict_file, &cli.dict, "Missing dict file");
     copy_required_setting_from_cli(&mut run_cfg.bench_file, &cli.bench, "Missing benches file");
@@ -104,6 +113,8 @@ fn main() {
         );
     }
     let session_id = db.new_session_id().unwrap();
+    db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())
+        .unwrap();
     bencher.run_benches(&search_cfg, &run_cfg);
 
     if run_cfg.verbose > 0 {

@@ -85,6 +85,7 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BenchRunCfg {
+    pub machine: Option<String>,
     pub repeat: u8,
     pub repeat_failed: u8,
 

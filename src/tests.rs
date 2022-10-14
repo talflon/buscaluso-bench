@@ -36,6 +36,7 @@ fn test_runcfg_deserialize() {
             dict_file: None,
             bench_file: None,
             out_db: default_out_db(),
+            machine: None,
         })
     );
 }
@@ -64,6 +65,7 @@ fn test_runcfg_serialize_deserialize() -> Result<(), toml::ser::Error> {
         dict_file: None,
         bench_file: None,
         out_db: default_out_db(),
+        machine: None,
     };
     assert_eq!(toml::from_str(&toml::to_string(&cfg)?), Ok(cfg));
     Ok(())
