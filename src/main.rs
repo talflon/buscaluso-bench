@@ -69,7 +69,7 @@ fn setting_file_reader(setting: &Option<PathBuf>, verbose: u8) -> impl BufRead {
     if verbose > 0 {
         eprintln!("Loading {:?}", path);
     }
-    BufReader::new(File::open(path).unwrap())
+    BufReader::new(File::open(path).expect("Error opening file"))
 }
 
 fn main() {
@@ -77,7 +77,8 @@ fn main() {
     let start_time = Instant::now();
     let mut search_cfg = BuscaCfg::new();
     let mut run_cfg: BenchRunCfg =
-        toml::from_str(&fs::read_to_string(cli.config).unwrap()).unwrap();
+        toml::from_str(&fs::read_to_string(cli.config).expect("Error reading config file"))
+            .expect("Error loading config");
     if cli.verbose != 0 {
         run_cfg.verbose = cli.verbose;
     }
@@ -93,18 +94,19 @@ fn main() {
         run_cfg.out_db = out_db;
     }
 
-    let mut db = BenchDb::new(Connection::open(&run_cfg.out_db).unwrap()).unwrap();
+    let mut db = BenchDb::new(Connection::open(&run_cfg.out_db).expect("Error opening db file"))
+        .expect("Error initializing db");
     let mut bencher = Bencher::new();
 
     search_cfg
         .load_rules(setting_file_reader(&run_cfg.rules_file, run_cfg.verbose))
-        .unwrap();
+        .expect("Error loading rules file");
     search_cfg
         .load_dictionary(setting_file_reader(&run_cfg.dict_file, run_cfg.verbose))
-        .unwrap();
+        .expect("Error loading dictionary");
     bencher
         .load_benches(setting_file_reader(&run_cfg.bench_file, run_cfg.verbose))
-        .unwrap();
+        .expect("Error loading bench file");
 
     if run_cfg.verbose > 0 {
         eprintln!(
@@ -112,19 +114,28 @@ fn main() {
             run_cfg.repeat, run_cfg.timeout,
         );
     }
-    let session_id = db.new_session_id().unwrap();
+    let session_id = db.new_session_id().expect("Error getting session id");
     db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())
-        .unwrap();
+        .expect("Error adding session info to db");
     for (key, value) in get_build_info() {
-        db.set_info(session_id, key, value).unwrap();
+        db.set_info(session_id, key, value)
+            .expect("Error adding session info to db");
     }
+    let mut file_contents = String::new();
+    setting_file_reader(&run_cfg.rules_file, 0)
+        .read_to_string(&mut file_contents)
+        .expect("Error reading rules file");
+    db.set_info(session_id, "search_rules", &file_contents)
+        .expect("Error adding session info to db");
+
     bencher.run_benches(&search_cfg, &run_cfg);
 
     if run_cfg.verbose > 0 {
         eprintln!("Writing to database");
     }
     for (bench, result) in bencher.get_results() {
-        db.add_result(session_id, &bench, result).unwrap();
+        db.add_result(session_id, &bench, result)
+            .expect("Error adding result to db");
     }
 
     if run_cfg.verbose > 0 {
