@@ -11,9 +11,10 @@ mod tests;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io;
-use std::io::BufRead;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufRead, Read};
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 use std::result::Result;
 use std::time::{Duration, Instant};
 
@@ -21,6 +22,7 @@ use nom::Finish;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use sha2::{Digest, Sha256};
 use shadow_rs::formatcp;
 use thiserror::Error;
 use unicode_normalization::char::is_combining_mark;
@@ -33,7 +35,7 @@ pub enum BenchError {
     #[error("IO error {source:?}")]
     Io {
         #[from]
-        source: io::Error,
+        source: std::io::Error,
     },
 
     #[error("Parsing error on line {line_no}: {text:?}")]
@@ -363,4 +365,14 @@ pub fn get_build_info() -> BTreeMap<&'static str, &'static str> {
         formatcp!("{} {}", build::RUST_VERSION, build::RUST_CHANNEL),
     );
     map
+}
+
+pub fn file_sha256_hex(path: &Path) -> std::io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut buffer = [0; 4096];
+    let mut digest = Sha256::new();
+    while let Some(len) = NonZeroUsize::new(file.read(&mut buffer)?) {
+        digest.update(&buffer[..len.get()]);
+    }
+    Ok(hex::encode(digest.finalize()))
 }

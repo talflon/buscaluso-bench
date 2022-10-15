@@ -15,6 +15,7 @@ use rusqlite::Connection;
 use buscaluso::BuscaCfg;
 
 use buscaluso_bench::build;
+use buscaluso_bench::file_sha256_hex;
 use buscaluso_bench::sqlite::BenchDb;
 use buscaluso_bench::{get_build_info, BenchRunCfg, Bencher};
 
@@ -109,10 +110,7 @@ fn main() {
         .expect("Error loading bench file");
 
     if run_cfg.verbose > 0 {
-        eprintln!(
-            "Running all benchmarks {} times with a timeout of {:?} each",
-            run_cfg.repeat, run_cfg.timeout,
-        );
+        eprintln!("Storing session info into db");
     }
     let session_id = db.new_session_id().expect("Error getting session id");
     db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())
@@ -127,11 +125,23 @@ fn main() {
         .expect("Error reading rules file");
     db.set_info(session_id, "search_rules", &file_contents)
         .expect("Error adding session info to db");
+    db.set_info(
+        session_id,
+        "search_dict_hash",
+        &file_sha256_hex(run_cfg.dict_file.as_ref().unwrap()).expect("Error hashing dict file"),
+    )
+    .expect("Error adding session info to db");
 
+    if run_cfg.verbose > 0 {
+        eprintln!(
+            "Running all benchmarks {} times with a timeout of {:?} each",
+            run_cfg.repeat, run_cfg.timeout,
+        );
+    }
     bencher.run_benches(&search_cfg, &run_cfg);
 
     if run_cfg.verbose > 0 {
-        eprintln!("Writing to database");
+        eprintln!("Writing results to database");
     }
     for (bench, result) in bencher.get_results() {
         db.add_result(session_id, &bench, result)
