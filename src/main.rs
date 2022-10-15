@@ -16,7 +16,7 @@ use buscaluso::BuscaCfg;
 
 use buscaluso_bench::build;
 use buscaluso_bench::file_sha256_hex;
-use buscaluso_bench::sqlite::BenchDb;
+use buscaluso_bench::sqlite::{BenchDb, BenchSessionId};
 use buscaluso_bench::{get_build_info, BenchRunCfg, Bencher};
 
 #[derive(Parser)]
@@ -113,24 +113,7 @@ fn main() {
         eprintln!("Storing session info into db");
     }
     let session_id = db.new_session_id().expect("Error getting session id");
-    db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())
-        .expect("Error adding session info to db");
-    for (key, value) in get_build_info() {
-        db.set_info(session_id, key, value)
-            .expect("Error adding session info to db");
-    }
-    let mut file_contents = String::new();
-    setting_file_reader(&run_cfg.rules_file, 0)
-        .read_to_string(&mut file_contents)
-        .expect("Error reading rules file");
-    db.set_info(session_id, "search_rules", &file_contents)
-        .expect("Error adding session info to db");
-    db.set_info(
-        session_id,
-        "search_dict_hash",
-        &file_sha256_hex(run_cfg.dict_file.as_ref().unwrap()).expect("Error hashing dict file"),
-    )
-    .expect("Error adding session info to db");
+    set_session_info(&mut db, session_id, &run_cfg).expect("Error adding session info to db");
 
     if run_cfg.verbose > 0 {
         eprintln!(
@@ -152,4 +135,32 @@ fn main() {
         let elapsed = start_time.elapsed();
         eprintln!("Total elapsed time: {:?}", elapsed);
     }
+}
+
+fn set_session_info(
+    db: &mut BenchDb,
+    session_id: BenchSessionId,
+    run_cfg: &BenchRunCfg,
+) -> rusqlite::Result<()> {
+    db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())?;
+    for (key, value) in get_build_info() {
+        db.set_info(session_id, key, value)?;
+    }
+    db.set_info(
+        session_id,
+        "search_rules",
+        &std::fs::read_to_string(run_cfg.rules_file.as_ref().unwrap())
+            .expect("Error reading rules file"),
+    )?;
+    db.set_info(
+        session_id,
+        "search_dict_hash",
+        &file_sha256_hex(run_cfg.dict_file.as_ref().unwrap()).expect("Error hashing dict file"),
+    )?;
+    db.set_info(
+        session_id,
+        "bench_config",
+        &toml::to_string(&run_cfg).expect("Error serializing run config"),
+    )?;
+    Ok(())
 }
