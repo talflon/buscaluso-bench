@@ -2,7 +2,9 @@
 
 Benchmarking program for development of [Buscaluso](https://github.com/talflon/buscaluso).
 
-Still under construction. Currently runs, but takes too long, and doesn't have a way of storing the results.
+Still under construction.
+Currently outputs to a [SQLite](https://sqlite.org) database,
+but doesn't help with viewing or parsing those results yet.
 
 Goals: to be able to run different development development versions of the algorithm, with different settings, on words to search for and find.
 To be able to compare results in terms of if they found the desired dictionary words, how much clock time it took, and how far down the list of possible words found it was.
@@ -13,13 +15,15 @@ To be able to compare results in terms of if they found the desired dictionary w
 Usage: buscaluso-bench [OPTIONS] --config <CONFIG>
 
 Options:
-  -c, --config <CONFIG>  Config TOML file
-  -r, --rules <RULES>    Rules file
-  -d, --dict <DICT>      Dictionary file
-  -b, --bench <BENCH>    Benchmark file
-  -v, --verbose...       Turn on verbose output
-  -h, --help             Print help information
-  -V, --version          Print version information
+  -m, --machine <MACHINE>  Machine identifier
+  -c, --config <CONFIG>    Config TOML file
+  -r, --rules <RULES>      Rules file
+  -d, --dict <DICT>        Dictionary file
+  -b, --bench <BENCH>      Benchmark file
+  -o, --out-db <OUT_DB>    Output database file, defaults to "bench.sqlite3"
+  -v, --verbose...         Turn on verbose output
+  -h, --help               Print help information
+  -V, --version            Print version information
 ```
 
 This will run all the benchmarks specified, with the specified settings.
@@ -41,7 +45,11 @@ dict_file = <path>
 bench_file = <path>
 ```
 
-The rules and dictionary files are required, and are passed to Buscaluso. The benchmark file is also required, and has the following format:
+The rules and dictionary files are required, and are passed to Buscaluso.
+
+The machine identifier is required, and is a simple string to identify which machine it was run on.
+
+The benchmark file is also required, and has the following format:
 
 ### Benchmark file format
 
