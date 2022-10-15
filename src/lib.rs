@@ -4,6 +4,8 @@
 mod benchfile;
 pub mod sqlite;
 
+shadow_rs::shadow!(build);
+
 #[cfg(test)]
 mod tests;
 
@@ -19,6 +21,7 @@ use nom::Finish;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use shadow_rs::formatcp;
 use thiserror::Error;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
@@ -348,4 +351,16 @@ fn set_bench_name<S: AsRef<str>>(bench_name: &mut String, start_word: &str, targ
 fn set_unaccented(accented: &str, unaccented: &mut String) {
     unaccented.clear();
     unaccented.extend(accented.nfd().filter(|&c| !is_combining_mark(c)));
+}
+
+pub fn get_build_info() -> BTreeMap<&'static str, &'static str> {
+    let mut map = BTreeMap::new();
+    map.insert("version_bench", build::GIT_DESCRIBE);
+    map.insert("version_buscaluso", buscaluso::build::GIT_DESCRIBE);
+    map.insert("build_deps", build::CARGO_TREE);
+    map.insert(
+        "build_rust",
+        formatcp!("{} {}", build::RUST_VERSION, build::RUST_CHANNEL),
+    );
+    map
 }

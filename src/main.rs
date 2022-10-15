@@ -12,14 +12,14 @@ use std::time::Instant;
 use clap::{CommandFactory, Parser};
 use rusqlite::Connection;
 
-use crate::sqlite::BenchDb;
-use buscaluso::*;
-use buscaluso_bench::*;
+use buscaluso::BuscaCfg;
 
-shadow_rs::shadow!(build);
+use buscaluso_bench::build;
+use buscaluso_bench::sqlite::BenchDb;
+use buscaluso_bench::{get_build_info, BenchRunCfg, Bencher};
 
 #[derive(Parser)]
-#[clap(author, version, long_version = build::CLAP_LONG_VERSION, about, long_about = None)]
+#[clap(author, version = build::GIT_DESCRIBE, long_version = build::CLAP_LONG_VERSION, about, long_about = None)]
 struct Cli {
     /// Machine identifier
     #[arg(short, long)]
@@ -115,6 +115,9 @@ fn main() {
     let session_id = db.new_session_id().unwrap();
     db.set_info(session_id, "machine", run_cfg.machine.as_ref().unwrap())
         .unwrap();
+    for (key, value) in get_build_info() {
+        db.set_info(session_id, key, value).unwrap();
+    }
     bencher.run_benches(&search_cfg, &run_cfg);
 
     if run_cfg.verbose > 0 {

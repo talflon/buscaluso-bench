@@ -204,3 +204,11 @@ fn test_set_bench_name_canonical_order() {
     );
     assert_eq!(bench_name1, bench_name2);
 }
+
+#[test]
+fn test_get_build_info() {
+    let info = get_build_info();
+    for (key, value) in &info {
+        assert!(!value.trim().is_empty(), "empty value for {}", key);
+    }
+}

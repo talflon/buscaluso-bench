@@ -25,3 +25,4 @@ quickcheck_macros = "1"
 
 [build-dependencies]
 shadow-rs = "0.16"
+git2 = "0.15"
