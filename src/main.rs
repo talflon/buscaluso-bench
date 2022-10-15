@@ -154,6 +154,11 @@ fn set_session_info(
     )?;
     db.set_info(
         session_id,
+        "search_rules_hash",
+        &file_sha256_hex(run_cfg.rules_file.as_ref().unwrap()).expect("Error hashing rules file"),
+    )?;
+    db.set_info(
+        session_id,
         "search_dict_hash",
         &file_sha256_hex(run_cfg.dict_file.as_ref().unwrap()).expect("Error hashing dict file"),
     )?;
