@@ -9,7 +9,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rusqlite::Connection;
 
-use super::{BenchDb, BenchResult};
+use super::{BenchDb, BenchResult, BenchSessionId};
 
 #[test]
 fn test_db_new_idempotent() -> rusqlite::Result<()> {
@@ -33,22 +33,23 @@ fn test_new_session_id_different() -> rusqlite::Result<()> {
 }
 
 #[quickcheck]
-fn test_set_info(name: String, value: String) -> rusqlite::Result<()> {
+fn test_set_and_get_info(name: String, value: String) -> rusqlite::Result<()> {
     let mut db = BenchDb::new(Connection::open_in_memory()?)?;
     let sid = db.new_session_id()?;
+    assert_eq!(db.get_info(sid, &name)?, "");
     db.set_info(sid, &name, &value)?;
-    assert_eq!(db.get_info(sid)?.get(&name), Some(&value));
+    assert_eq!(db.get_info(sid, &name)?, value);
     Ok(())
 }
 
 #[quickcheck]
-fn test_get_info(values: BTreeMap<String, String>) -> rusqlite::Result<()> {
+fn test_get_all_info(values: BTreeMap<String, String>) -> rusqlite::Result<()> {
     let mut db = BenchDb::new(Connection::open_in_memory()?)?;
     let sid = db.new_session_id()?;
     for (name, value) in &values {
         db.set_info(sid, name, value)?;
     }
-    assert_eq!(db.get_info(sid)?, values);
+    assert_eq!(db.get_all_info(sid)?, values);
     Ok(())
 }
 
@@ -79,4 +80,10 @@ fn test_add_get_results() {
     QuickCheck::new()
         .gen(quickcheck::Gen::new(8))
         .quickcheck(add_get_results as fn(_) -> rusqlite::Result<()>);
+}
+
+#[quickcheck]
+fn test_session_id_display_fromstr(id: u64) {
+    let session_id = BenchSessionId(id);
+    assert_eq!(format!("{}", session_id).parse(), Ok(session_id));
 }

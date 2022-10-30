@@ -5,10 +5,12 @@
 mod tests;
 
 use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
 use rusqlite::types::FromSql;
-use rusqlite::{named_params, Connection, ToSql};
+use rusqlite::{named_params, Connection, OptionalExtension, ToSql};
 
 use super::BenchResult;
 
@@ -37,7 +39,7 @@ create index if not exists bench_run_session_idx
 "#;
 
 pub struct BenchDb {
-    conn: Connection,
+    pub conn: Connection,
 }
 
 impl BenchDb {
@@ -150,7 +152,7 @@ impl BenchDb {
         Ok(())
     }
 
-    pub fn get_info(
+    pub fn get_all_info(
         &mut self,
         session_id: BenchSessionId,
     ) -> rusqlite::Result<BTreeMap<String, String>> {
@@ -167,6 +169,22 @@ impl BenchDb {
             map.insert(row.get(0)?, row.get(1)?);
         }
         Ok(map)
+    }
+
+    pub fn get_info(&mut self, session_id: BenchSessionId, name: &str) -> rusqlite::Result<String> {
+        let value: Option<Option<String>> = self
+            .conn
+            .prepare_cached(
+                r#"
+                select value
+                from bench_session_info
+                where name = ?
+                    and session_id = ?
+                "#,
+            )?
+            .query_row((name, session_id), |row| row.get(0))
+            .optional()?;
+        Ok(value.flatten().unwrap_or_default())
     }
 }
 
@@ -188,5 +206,19 @@ impl ToSql for BenchSessionId {
 impl FromSql for BenchSessionId {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
         u64::column_result(value).map(BenchSessionId)
+    }
+}
+
+impl FromStr for BenchSessionId {
+    type Err = <u64 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse().map(BenchSessionId)
+    }
+}
+
+impl Display for BenchSessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }

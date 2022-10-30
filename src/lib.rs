@@ -9,11 +9,12 @@ shadow_rs::shadow!(build);
 #[cfg(test)]
 mod tests;
 
-use std::cmp::Ordering;
+use std::cmp::{max, min, Ordering};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, Read};
 use std::num::NonZeroUsize;
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::result::Result;
 use std::time::{Duration, Instant};
@@ -51,6 +52,13 @@ pub struct BenchResult {
 }
 
 impl BenchResult {
+    fn success(found_index: usize, elapsed: Duration) -> BenchResult {
+        BenchResult {
+            found_index: Ok(Some(found_index)),
+            elapsed,
+        }
+    }
+
     fn is_found(&self) -> bool {
         matches!(self.found_index, Ok(Some(_)))
     }
@@ -70,6 +78,126 @@ impl Ord for BenchResult {
             _ => {}
         }
         (&self.found_index, self.elapsed).cmp(&(&other.found_index, other.elapsed))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BenchResultCompiler {
+    index_equivalent: Duration,
+    drop_fraction: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledBenchResult {
+    pub score: Option<Duration>,
+    pub errors: Vec<String>,
+    pub found_index: Option<RangeInclusive<usize>>,
+    pub elapsed: Option<RangeInclusive<Duration>>,
+}
+
+impl CompiledBenchResult {
+    pub fn is_better_than(&self, other: &CompiledBenchResult) -> bool {
+        match (self.score, other.score) {
+            (Some(us), Some(them)) => us < them,
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
+    }
+
+    pub fn difference(&self, other: &CompiledBenchResult) -> f64 {
+        match (self.score, other.score) {
+            (Some(us), Some(them)) => us.as_secs_f64() - them.as_secs_f64(),
+            (Some(_), None) => f64::NEG_INFINITY,
+            (None, Some(_)) => f64::INFINITY,
+            (None, None) => 0.0,
+        }
+    }
+}
+
+pub fn extend_range<T: Ord + Copy>(range: RangeInclusive<T>, value: T) -> RangeInclusive<T> {
+    if value < *range.start() {
+        value..=*range.end()
+    } else if value > *range.end() {
+        *range.start()..=value
+    } else {
+        range
+    }
+}
+
+pub fn combine_ranges<T: Ord + Copy>(
+    range1: &RangeInclusive<T>,
+    range2: &RangeInclusive<T>,
+) -> RangeInclusive<T> {
+    min(*range1.start(), *range2.start())..=max(*range1.end(), *range2.end())
+}
+
+pub fn get_range<T: Ord + Copy>(values: impl IntoIterator<Item = T>) -> Option<RangeInclusive<T>> {
+    let mut iter = values.into_iter();
+    iter.next()
+        .map(|first| iter.fold(first..=first, extend_range))
+}
+
+impl BenchResultCompiler {
+    pub fn new(index_equivalent: Duration, drop_fraction: f64) -> BenchResultCompiler {
+        assert!(drop_fraction >= 0.0);
+        assert!(drop_fraction < 1.0);
+        BenchResultCompiler {
+            index_equivalent,
+            drop_fraction,
+        }
+    }
+
+    pub fn score(&self, result: &BenchResult) -> f64 {
+        match result.found_index {
+            Ok(Some(i)) => {
+                i as f64 * self.index_equivalent.as_secs_f64() + result.elapsed.as_secs_f64()
+            }
+            _ => f64::INFINITY,
+        }
+    }
+
+    pub fn compile(&self, results: impl IntoIterator<Item = BenchResult>) -> CompiledBenchResult {
+        let mut results: Vec<(f64, BenchResult)> =
+            results.into_iter().map(|r| (self.score(&r), r)).collect();
+        assert!(!results.is_empty());
+        results.sort_by(|x, y| x.partial_cmp(y).unwrap()); // force sorting of floats
+
+        let errors: Vec<String> = results
+            .iter()
+            .flat_map(|(_, r)| r.found_index.as_ref().err().cloned())
+            .collect();
+
+        let drop_num = (self.drop_fraction / 2.0 * results.len() as f64).floor() as usize;
+        let keep_num = results.len() - 2 * drop_num;
+        debug_assert!(keep_num > 0);
+        let results = &results[drop_num..][..keep_num];
+
+        let elapsed = get_range(
+            results
+                .iter()
+                .filter(|(s, _)| s.is_finite())
+                .map(|(_, r)| r.elapsed),
+        );
+        let found_index = get_range(
+            results
+                .iter()
+                .filter(|(s, _)| s.is_finite())
+                .map(|(_, r)| r.found_index.as_ref().unwrap().unwrap()),
+        );
+
+        let total: f64 = results.iter().map(|(s, _)| s).sum();
+        let score = total / keep_num as f64;
+
+        CompiledBenchResult {
+            score: if score.is_finite() {
+                Some(Duration::from_secs_f64(score))
+            } else {
+                None
+            },
+            errors,
+            found_index,
+            elapsed,
+        }
     }
 }
 
@@ -241,10 +369,10 @@ impl Bencher {
                         Some(Some((word, _))) => {
                             let elapsed = start_time.elapsed();
                             runner.on_word_found(word, |target| {
-                                benches.get_mut(target).unwrap().push(BenchResult {
-                                    elapsed,
-                                    found_index: Ok(Some(word_idx)),
-                                })
+                                benches
+                                    .get_mut(target)
+                                    .unwrap()
+                                    .push(BenchResult::success(word_idx, elapsed))
                             });
                             word_idx += 1;
                         }
