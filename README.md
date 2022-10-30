@@ -4,7 +4,7 @@ Benchmarking program for development of [Buscaluso](https://github.com/talflon/b
 
 Still under construction.
 Currently outputs to a [SQLite](https://sqlite.org) database,
-but doesn't help with viewing or parsing those results yet.
+and includes a utility to analyze the results.
 
 Goals: to be able to run different development development versions of the algorithm, with different settings, on words to search for and find.
 To be able to compare results in terms of if they found the desired dictionary words, how much clock time it took, and how far down the list of possible words found it was.
@@ -77,3 +77,31 @@ one = ano
 ```
 
 because the first one suffices to define both benchmarks.
+
+## `benchdb` utility
+
+`benchdb` is a command-line utility to explore the results in a SQLite file.
+
+```
+Usage: benchdb [OPTIONS] <COMMAND>
+
+Commands:
+  list-sessions  Lists all sessions
+  show           Shows a session's metadata. Doesn't show multiline values
+  get            Outputs a single metadata value from a session
+  stats          Shows some quick statistics of a session's results
+  results        Shows statistics of all the session's results
+  compare        Compares the results of two sessions
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+      --db <DB>  Database file [default: bench.sqlite3]
+  -h, --help     Print help information
+```
+
+When getting or comparing statistics, it combines multiple runs,
+ignores the best and worst (except for errors),
+and takes a "score" that combines the position in the results with the time spent.
+At the moment, this is fixed at dropping 1/4 of the results (the top and bottom 1/8, round down),
+and treating each result position as 1/8 of a second.
+`compare` will only show individual benchmarks where there was a difference in score of at least 1/32 second.
